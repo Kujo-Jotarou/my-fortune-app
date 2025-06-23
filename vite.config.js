@@ -14,18 +14,16 @@ export default defineConfig({
       'firebase/app',
       'firebase/auth',
       'firebase/firestore',
-      // 他にFirebaseサブモジュールを使っている場合はここに追加
+      // アプリ内で他のFirebaseサブモジュール（例: 'firebase/database'など）を
+      // インポートしている場合は、ここに追加してください
     ],
   },
 
   build: {
-    // CommonJSモジュールの解決を改善するための設定
-    commonjsOptions: {
-      include: [/node_modules/],
-    },
+    // commonjsOptions を削除 (optimizeDeps とは別に問題を起こす可能性も考慮)
+    // rollupOptions.external は以前のエラーメッセージが再度出ているため、
+    // やはりRollupにビルドさせない方針に戻します。
     rollupOptions: {
-      // Rollupのビルド時に、Firebaseモジュールをバンドルから除外する（外部化する）
-      // これにより、Rollupがこれらのインポートを解決できなくてもビルドが失敗しないようにします
       external: [
         'firebase/app',
         'firebase/auth',
@@ -33,7 +31,6 @@ export default defineConfig({
         // 他にFirebaseサブモジュールを使っている場合はここに追加
       ],
       output: {
-        // Firebase関連のモジュールを別々のチャンクに分割
         manualChunks: (id) => {
           if (id.includes('firebase')) {
             return 'vendor-firebase'; 
