@@ -3,13 +3,18 @@ import react from '@vitejs/plugin-react';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: '/my-fortune-app/', // GitHub Pagesのサブディレクトリに合わせてください
+  base: '/my-fortune-app/', // あなたのリポジトリ名に合わせてください
 
   plugins: [react()],
 
   // 依存関係の解決に関する設定
   resolve: {
-    // 重複する依存関係を解決するための設定（Firebaseのインポート問題に役立つことがある）
+    // Firebaseのインポートパスを明示的に解決するためのエイリアス
+    alias: {
+      'firebase/app': 'firebase/app/dist/index.esm.js',
+      'firebase/auth': 'firebase/auth/dist/index.esm.js',
+      'firebase/firestore': 'firebase/firestore/dist/index.esm.js',
+    },
     dedupe: ['react', 'react-dom'], 
   },
 
@@ -19,20 +24,26 @@ export default defineConfig({
       'firebase/app',
       'firebase/auth',
       'firebase/firestore',
-      // 他にFirebaseのサブモジュールを使っている場合はここに追加
     ],
   },
 
   build: {
-    // RollupOptions.external は通常、ビルドから完全に除外したい場合に使うため、
-    // 今回のケースではCommonJSOptionsとoptimizeDepsで解決を試みます。
-    // もし以前にここに追加していた場合は、削除してください。
-    rollupOptions: {
-      // external: ['firebase/app', 'firebase/auth', 'firebase/firestore'] // ★この行は削除またはコメントアウトします★
-    },
-    // CommonJSモジュールの解決を改善するための設定
+    // CommonJSモジュールの解決を改善するための設定（これは引き続き必要）
     commonjsOptions: {
       include: [/node_modules/],
+    },
+    rollupOptions: {
+      output: {
+        // Firebase関連のモジュールを別々のチャンクに分割
+        manualChunks: (id) => {
+          if (id.includes('firebase')) {
+            return 'vendor-firebase'; // Firebase関連のファイルを一つのチャンクにまとめる
+          }
+          if (id.includes('node_modules')) {
+            return 'vendor'; // その他のnode_modulesを別のチャンクにまとめる
+          }
+        },
+      },
     },
   },
 });
