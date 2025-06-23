@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-// Firebaseのインポートパスを個別サービスで指定
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, collection, query, orderBy, onSnapshot, addDoc, deleteDoc } from 'firebase/firestore';
@@ -162,57 +161,102 @@ function App() {
     // --- Firebase Initialization and Authentication ---
     useEffect(() => {
         const initializeFirebase = async () => {
+            setLoadingFirebase(true); // Ensure loading state starts true
+            setErrorMessage(''); // Clear previous errors
+
+            if (app) { // If app is already initialized, just set loading false
+                setLoadingFirebase(false);
+                return;
+            }
+
             try {
-                if (!app) {
-                    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-                    const initializedApp = initializeApp(firebaseConfig);
-                    const authInstance = getAuth(initializedApp);
-                    const dbInstance = getFirestore(initializedApp);
+                // ここにFirebase Consoleからコピーした実際の構成情報を直接貼り付けます
+                // あなたが提供したfirebaseConfigオブジェクトをここに統合しました
+                const firebaseConfig = {
+                    apiKey: "AIzaSyCzuMnPW3PTMoVUBUB8057CqyHW421sDnw",
+                    authDomain: "myfortuneapp-c7667.firebaseapp.com",
+                    projectId: "myfortuneapp-c7667",
+                    storageBucket: "myfortuneapp-c7667.firebasestorage.app",
+                    messagingSenderId: "770046874662",
+                    appId: "1:770046874662:web:115065e3877397d1b082e7",
+                    measurementId: "G-NQ701V0GWS"
+                };
 
-                    setApp(initializedApp);
-                    setAuth(authInstance);
-                    setDb(dbInstance);
+                const initializedApp = initializeApp(firebaseConfig);
+                const authInstance = getAuth(initializedApp);
+                const dbInstance = getFirestore(initializedApp);
 
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                setApp(initializedApp);
+                setAuth(authInstance);
+                setDb(dbInstance);
+
+                let userSignedIn = false;
+
+                // Canvas環境での認証トークンが存在すればそれを使用、エラー時には匿名でサインイン
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    try {
                         await signInWithCustomToken(authInstance, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(authInstance);
+                        console.log("Firebase: Signed in with custom token from Canvas.");
+                        userSignedIn = true;
+                    } catch (tokenError) {
+                        // カスタムトークン認証が失敗した場合（例: トークンが無効、期限切れなど）、警告ログを出し匿名認証にフォールバック
+                        console.warn("Firebase: Custom token sign-in failed (might be invalid or expired for this project config), attempting anonymous sign-in.", tokenError);
+                        // このエラーは致命的ではないため、ここでsetErrorMessageは行わない
                     }
-
-                    onAuthStateChanged(authInstance, (user) => {
-                        if (user) {
-                            setUserId(user.uid);
-                            console.log('Firebase user ID:', user.uid);
-                            loadUserData(dbInstance, user.uid);
-                            loadFortuneHistory(dbInstance, user.uid);
-                        } else {
-                            setUserId(null);
-                            setName('');
-                            setBirthDate('');
-                            setBirthTime('');
-                            setBirthPlace('');
-                            setBloodType('A');
-                            setMbtiType('ISTJ');
-                            setFortuneHistory([]);
-                            console.log('No user signed in.');
-                        }
-                        setLoadingFirebase(false);
-                    });
                 }
-            } catch (error) {
-                console.error("Firebase initialization or authentication failed:", error);
-                setErrorMessage("Firebaseの初期化に失敗しました。");
+
+                // もしまだサインインしていなければ、匿名認証を試みる
+                if (!userSignedIn) {
+                    try {
+                        await signInAnonymously(authInstance);
+                        console.log("Firebase: Signed in anonymously.");
+                        userSignedIn = true; // 匿名認証が成功した場合、userSignedInをtrueにする
+                    } catch (anonymousError) {
+                        // 匿名認証自体が失敗した場合、これは致命的な認証エラー
+                        console.error("Firebase: Anonymous sign-in failed. App features might be limited.", anonymousError);
+                        setErrorMessage("Firebase認証に失敗しました。アプリの機能が制限されます。詳細: " + anonymousError.message);
+                    }
+                }
+
+                // 認証状態の変更を監視 (初期サインイン試行後に設定)
+                onAuthStateChanged(authInstance, (user) => {
+                    if (user) {
+                        setUserId(user.uid);
+                        console.log('Firebase user ID:', user.uid);
+                        // ユーザーが認証された後にデータ読み込み関数を呼び出す
+                        loadUserData(dbInstance, user.uid);
+                        loadFortuneHistory(dbInstance, user.uid);
+                    } else {
+                        setUserId(null);
+                        // ユーザーがサインアウトした場合や認証されていない場合に状態をリセット
+                        setName('');
+                        setBirthDate('');
+                        setBirthTime('');
+                        setBirthPlace('');
+                        setBloodType('A');
+                        setMbtiType('ISTJ');
+                        setFortuneHistory([]);
+                        console.log('No user signed in after auth state change.');
+                    }
+                    setLoadingFirebase(false); // 認証フロー完了
+                });
+
+            } catch (initializationError) {
+                // Firebase Appの初期化自体が失敗するような致命的なエラーを捕捉
+                console.error("Firebaseアプリケーションの初期化に致命的なエラーが発生しました:", initializationError);
+                setErrorMessage("Firebaseの初期化に失敗しました。アプリは動作しません。詳細: " + initializationError.message);
                 setLoadingFirebase(false);
             }
         };
 
         initializeFirebase();
-    }, [app]);
+    }, [app]); // `app` を依存関係に含めることで、アプリが初期化済みなら再実行しないようにする
 
     // --- User Data Management (Firestore) ---
     const loadUserData = async (firestore, uid) => {
         if (!firestore || !uid) return;
-        const userDocRef = doc(firestore, `artifacts/${typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'}/users/${uid}/user_data/profile`);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Canvas環境変数を取得
+        const userDocRef = doc(firestore, `artifacts/${appId}/users/${uid}/user_data/profile`);
         try {
             const docSnap = await getDoc(userDocRef);
             if (docSnap.exists()) {
@@ -236,7 +280,8 @@ function App() {
             setErrorMessage("ユーザーが認証されていません。");
             return;
         }
-        const userDocRef = doc(db, `artifacts/${typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'}/users/${userId}/user_data/profile`);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Canvas環境変数を取得
+        const userDocRef = doc(db, `artifacts/${appId}/users/${userId}/user_data/profile`);
         try {
             await setDoc(userDocRef, {
                 name,
@@ -264,7 +309,8 @@ function App() {
             console.error("ユーザーが認証されていません。広告スキップステータスを更新できません。");
             return;
         }
-        const userDocRef = doc(db, `artifacts/${typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'}/users/${userId}/user_data/profile`);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Canvas環境変数を取得
+        const userDocRef = doc(db, `artifacts/${appId}/users/${userId}/user_data/profile`);
         try {
             await setDoc(userDocRef, { hasSharedForAdSkip: status }, { merge: true });
             setHasSharedForAdSkip(status);
@@ -277,7 +323,8 @@ function App() {
     // --- Fortune History Management (Firestore) ---
     const loadFortuneHistory = (firestore, uid) => {
         if (!firestore || !uid) return;
-        const historyCollectionRef = collection(firestore, `artifacts/${typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'}/users/${uid}/fortune_history`);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Canvas環境変数を取得
+        const historyCollectionRef = collection(firestore, `artifacts/${appId}/users/${uid}/fortune_history`);
         const q = query(historyCollectionRef, orderBy('timestamp', 'desc'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const history = snapshot.docs.map(doc => ({
@@ -297,7 +344,8 @@ function App() {
             setErrorMessage("ユーザーが認証されていません。");
             return;
         }
-        const historyCollectionRef = collection(db, `artifacts/${typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'}/users/${userId}/fortune_history`);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Canvas環境変数を取得
+        const historyCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/fortune_history`); // Changed uid to userId
         try {
             await addDoc(historyCollectionRef, {
                 fortuneCategory: category,
@@ -318,8 +366,9 @@ function App() {
             setErrorMessage("削除できませんでした。");
             return;
         }
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Canvas環境変数を取得
         try {
-            await deleteDoc(doc(db, `artifacts/${typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'}/users/${userId}/fortune_history`, itemToDelete.id));
+            await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/fortune_history`, itemToDelete.id));
             console.log("占い履歴が削除されました！");
             setErrorMessage("");
         } catch (error) {
@@ -430,7 +479,7 @@ function App() {
         
         let astrologicalNotes = `太陽星座: ${sunSign}。\n`;
         astrologicalNotes += `出生時刻: ${userDataForPrompt.birthTime !== '不明' ? userDataForPrompt.birthTime : '不明'}。出生地: ${userDataForPrompt.birthPlace !== '' ? userDataForPrompt.birthPlace : '不明'}。\n`;
-        astrologicalNotes += `これらの情報（特に正確な出生時刻と出生地が不明な場合は、太陽星座と心理学的特性を重視）に基づき、月星座、アセンダント、主要な惑星（水星、金星、火星など）のサインや、それらがどのハウスにあるか（一般的な解釈で良い）、そして主要なアスペクト（例: コンジャンクション、オポジション、スクエア、トライン、セクスタイル）の可能性を占星術の知識を総動員して想像し、あなたの洞察に含めてください。\n`;
+        astrologicalNotes += `これらの情報（特に正確な出生時刻と出生地が不明な場合は、太陽星座と心理学的特性を重視）に基づき、月星座、アセンダント、主要な惑星（水星、金星、火星など）のサインや、それらがどのハウスにあるか（一般的な解釈で良い）、そして主要なアスペクト（例: コンジャンジョン、オポジション、スクエア、トライン、セクスタイル）の可能性を占星術の知識を総動員して想像し、あなたの洞察に含めてください。\n`;
         astrologicalNotes += `具体的に、ユーザーのMBTIタイプや血液型との関連性も踏まえ、行動傾向や内面世界を深く読み解いてください。`;
 
         let tarotInfo = '';
@@ -485,12 +534,13 @@ ${tarotInfo}
             body: JSON.stringify(payload)
         });
 
-        const result = response.json();
+        const result = await response.json(); // await を追加
 
         if (result.candidates && result.candidates.length > 0 &&
             result.candidates[0].content && result.candidates[0].content.parts &&
             result.candidates[0].content.parts.length > 0) {
-            return result.candidates[0].content.parts[0].text;
+            const text = result.candidates[0].content.parts[0].text; // ここでtextを取得
+            return text; // textを返す
         } else {
             throw new Error("AI生成結果の構造が予期せぬものでした。");
         }
@@ -501,7 +551,7 @@ ${tarotInfo}
             setErrorMessage("名前、生年月日、占いのジャンルは必須です。");
             return;
         }
-        if (!db || !userId) {
+        if (!db || !userId) { // userIdの存在チェックを追加
             setErrorMessage("ユーザーが認証されていません。しばらくお待ちください。");
             return;
         }
@@ -846,11 +896,15 @@ ${tarotInfo}
                     <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900 text-white">
                         <h2 className="text-3xl font-bold mb-4">広告表示中</h2>
                         <p className="text-xl mb-8">次の占いまであと {adTimer} 秒...</p>
+                        {/* 運命の人に会えるかも❣会員数1500万人の出会いマッチングサイト‼ の文言を追加 */}
+                        <p className="text-xl font-bold text-center text-yellow-300 mb-4 animate-pulse">
+                            運命の人に会えるかも❣会員数1500万人の出会いマッチングサイト‼
+                        </p>
                         {/* A8.net バナー広告のコードを直接埋め込み - サイズ調整 */}
                         <div className="my-4 flex justify-center items-center" style={{ width: '320px', height: '280px', overflow: 'hidden' }}>
-                            <a href="[https://px.a8.net/svt/ejp?a8mat=457HK0+6TW1MA+22QA+I47XT](https://px.a8.net/svt/ejp?a8mat=457HK0+6TW1MA+22QA+I47XT)" rel="nofollow" target="_blank"> {/* target="_blank" を追加し、別タブで開くように */}
-                            <img border="0" width="320" height="280" alt="美容系広告" src="[https://www28.a8.net/svt/bgt?aid=250612128413&wid=001&eno=01&mid=s00000009685003043000&mc=1](https://www28.a8.net/svt/bgt?aid=250612128413&wid=001&eno=01&mid=s00000009685003043000&mc=1)"/></a>
-                            <img border="0" width="1" height="1" src="[https://www12.a8.net/0.gif?a8mat=457HK0+6TW1MA+22QA+I47XT](https://www12.a8.net/0.gif?a8mat=457HK0+6TW1MA+22QA+I47XT)" alt="トラッキングピクセル" style={{ display: 'none' }}/> {/* トラッキングピクセルは非表示に */}
+                            <a href="https://px.a8.net/svt/ejp?a8mat=457HK0+6TW1MA+22QA+I47XT" rel="nofollow" target="_blank"> {/* target="_blank" を追加し、別タブで開くように */}
+                            <img border="0" width="320" height="280" alt="美容系広告" src="https://www28.a8.net/svt/bgt?aid=250612128413&wid=001&eno=01&mid=s00000009685003043000&mc=1"/></a>
+                            <img border="0" width="1" height="1" src="https://www12.a8.net/0.gif?a8mat=457HK0+6TW1MA+22QA+I47XT" alt="トラッキングピクセル" style={{ display: 'none' }}/> {/* トラッキングピクセルは非表示に */}
                         </div>
                         <p className="text-sm text-gray-500 mt-2">SNSでシェアすると、広告をスキップできます！</p>
                          {/* Share Buttons on Ad Modal */}
@@ -1012,7 +1066,7 @@ ${tarotInfo}
                     <div>
                         <label htmlFor="mbtiType" className="block text-gray-200 text-lg font-medium mb-2">
                             MBTIタイプ <span className="text-gray-400 text-sm">
-                                (<a href="[https://www.16personalities.com/ja/](https://www.16personalities.com/ja/)" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">16Personalities</a>などで診断後選択)
+                                (<a href="https://www.16personalities.com/ja/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">16Personalities</a>などで診断後選択)
                             </span>
                         </label>
                         <select
@@ -1160,7 +1214,7 @@ ${tarotInfo}
                                 className="bg-gray-600 text-white p-3 rounded-md font-semibold hover:bg-gray-700 transition duration-300 shadow-md flex-1 inline-flex items-center justify-center min-w-[150px] sm:min-w-0"
                             >
                                 <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7H5c-1.103 0-2 .897-2 2v10c0 1.103.897 2 2 2h10c1.103 0 2-.897 2-2v-2h2v-8c0-1.103-.897-2-2-2h-8zm10 2h-6V7h6v2zm-2 4h-6V9h6v4z" clipRule="evenodd" /></svg>
-                                リンクをコピー
+                                コピー
                             </button>
                         </div>
                     </div>
