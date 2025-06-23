@@ -173,7 +173,7 @@ function App() {
                 // ここにFirebase Consoleからコピーした実際の構成情報を直接貼り付けます
                 // あなたが提供したfirebaseConfigオブジェクトをここに統合しました
                 const firebaseConfig = {
-                    apiKey: "AIzaSyCzuMnPW3PTMoVUBUB8057CqyHW421sDnw",
+                    apiKey: "AIzaSyCwe-7ih-aAZMVCrIZ8iZZLucOO3ZvZROQ",
                     authDomain: "myfortuneapp-c7667.firebaseapp.com",
                     projectId: "myfortuneapp-c7667",
                     storageBucket: "myfortuneapp-c7667.firebasestorage.app",
