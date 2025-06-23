@@ -3,6 +3,11 @@ import react from '@vitejs/plugin-react'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: '/my-fortune-app/', // 
+  base: '/my-fortune-app/',
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      external: ['firebase/app', 'firebase/auth', 'firebase/firestore'] // 
+    }
+  }
 })
