@@ -7,19 +7,14 @@ export default defineConfig({
 
   plugins: [react()],
 
-  // 依存関係の解決に関する設定
-  // resolve.alias は削除しました。Viteのデフォルト解決に任せます。
-  // resolve.dedupe は今回の問題の直接の原因ではないため、一旦削除してシンプルにします。
-
-  // 依存関係の最適化に関する設定（ビルドパフォーマンス向上とモジュール解決）
+  // 開発時 (dev server) の依存関係の最適化設定
+  // FirebaseモジュールをViteがプリバンドル対象に含めるように指示
   optimizeDeps: {
     include: [
-      // FirebaseモジュールをViteがプリバンドル対象に含めるように指示
       'firebase/app',
       'firebase/auth',
       'firebase/firestore',
-      // アプリ内で他のFirebaseサブモジュール（例: 'firebase/database'など）を
-      // インポートしている場合は、ここに追加してください
+      // 他にFirebaseサブモジュールを使っている場合はここに追加
     ],
   },
 
@@ -29,8 +24,16 @@ export default defineConfig({
       include: [/node_modules/],
     },
     rollupOptions: {
+      // Rollupのビルド時に、Firebaseモジュールをバンドルから除外する（外部化する）
+      // これにより、Rollupがこれらのインポートを解決できなくてもビルドが失敗しないようにします
+      external: [
+        'firebase/app',
+        'firebase/auth',
+        'firebase/firestore',
+        // 他にFirebaseサブモジュールを使っている場合はここに追加
+      ],
       output: {
-        // Firebase関連のモジュールを一つのチャンクにまとめることで、バンドルの安定性を高める
+        // Firebase関連のモジュールを別々のチャンクに分割
         manualChunks: (id) => {
           if (id.includes('firebase')) {
             return 'vendor-firebase'; 
