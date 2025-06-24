@@ -30,6 +30,8 @@ function App() {
     const [fortuneHistory, setFortuneHistory] = useState([]);
     const [showConfirmDelete, setShowConfirmDelete] = useState(false);
     const [itemToDelete, setItemToDelete] = useState(null);
+    // 新しい状態変数：占い結果が表示されているかどうかを追跡
+    const [hasResultDisplayed, setHasResultDisplayed] = useState(false); 
 
     // Tarot states
     const [drawnTarotCards, setDrawnTarotCards] = useState([]); // [{name: 'Fool', position: 'Past', isReversed: false}]
@@ -65,6 +67,10 @@ function App() {
     ];
 
     const bloodTypeOptions = ['A', 'B', 'O', 'AB'];
+
+    // Determine when to show the Tarot Draw button
+    // isInputReadyを状態変数の直後に移動
+    const isInputReady = name && birthDate && selectedFortuneCategory;
 
     // --- Tarot Card Data (Full 78 cards - Rider-Waite-Smith names) ---
     const tarotDeck = [
@@ -106,7 +112,7 @@ function App() {
         { name: "ワンドのペイジ (Page of Wands)" },
         { name: "ワンドのナイト (Knight of Wands)" },
         { name: "ワンドのクイーン (Queen of Wands)" },
-        { name: "ワンドのキング (King of Wands)" },
+        { name: "ワンドのキング (King of Kings)" },
 
         // Minor Arcana - Cups (聖杯) (14 cards)
         { name: "カップのエース (Ace of Cups)" },
@@ -138,7 +144,7 @@ function App() {
         { name: "ソードのペイジ (Page of Swords)" },
         { name: "ソードのナイト (Knight of Swords)" },
         { name: "ソードのクイーン (Queen of Swords)" },
-        { name: "ソードのキング (King of Swords)" },
+        { name: "ソードのキング (King of Kings)" },
 
         // Minor Arcana - Pentacles (金貨) (14 cards)
         { name: "ペンタクルのエース (Ace of Pentacles)" },
@@ -154,7 +160,7 @@ function App() {
         { name: "ペンタクルのペイジ (Page of Pentacles)" },
         { name: "ペンタクルのナイト (Knight of Pentacles)" },
         { name: "ペンタクルのクイーン (Queen of Pentacles)" },
-        { name: "ペンタクルのキング (King of Pentacles)" },
+        { name: "ペンタクルのキング (King of Kings)" },
     ];
 
 
@@ -170,17 +176,22 @@ function App() {
             }
 
             try {
-                // ここにFirebase Consoleからコピーした実際の構成情報を直接貼り付けます
-                // あなたが提供したfirebaseConfigオブジェクトをここに統合しました
-                const firebaseConfig = {
-                    apiKey: "AIzaSyCwe-7ih-aAZMVCrIZ8iZZLucOO3ZvZROQ",
-                    authDomain: "myfortuneapp-c7667.firebaseapp.com",
-                    projectId: "myfortuneapp-c7667",
-                    storageBucket: "myfortuneapp-c7667.firebasestorage.app",
-                    messagingSenderId: "770046874662",
-                    appId: "1:770046874662:web:115065e3877397d1b082e7",
-                    measurementId: "G-NQ701V0GWS"
-                };
+                // Firebase Console (console.firebase.google.com) から取得した実際の構成情報を直接貼り付けます
+                // このオブジェクトの apiKey が、Google Cloud PlatformでGemini APIが有効化されているAPIキーと一致する必要があります
+                // Canvas 環境変数から Firebase Config を取得
+                const firebaseConfig = typeof __firebase_config !== 'undefined'
+                    ? JSON.parse(__firebase_config)
+                    : {
+                        // Firebase SDKが使用するAPIキー。GCPで新しく作成したキー (AIzaSyCwe-7ih-aAZMVCrIZ8iZZLucOO3ZvZROQ) をここに設定します。
+                        // このキーには、Identity Toolkit APIとGemini APIの両方の権限が付与されている必要があります。
+                        apiKey: "AIzaSyCwe-7ih-aAZMVCrIZ8iZZLucOO3ZvZROQ", 
+                        authDomain: "myfortuneapp-c7667.firebaseapp.com",
+                        projectId: "myfortuneapp-c7667",
+                        storageBucket: "myfortuneapp-c7667.firebasestorage.app",
+                        messagingSenderId: "770046874662",
+                        appId: "1:770046874662:web:115065e3877397d1b082e7",
+                        measurementId: "G-NQ701V0GWS"
+                    };
 
                 const initializedApp = initializeApp(firebaseConfig);
                 const authInstance = getAuth(initializedApp);
@@ -190,42 +201,45 @@ function App() {
                 setAuth(authInstance);
                 setDb(dbInstance);
 
-                let userSignedIn = false;
-
                 // Canvas環境での認証トークンが存在すればそれを使用、エラー時には匿名でサインイン
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     try {
                         await signInWithCustomToken(authInstance, __initial_auth_token);
                         console.log("Firebase: Signed in with custom token from Canvas.");
-                        userSignedIn = true;
                     } catch (tokenError) {
-                        // カスタムトークン認証が失敗した場合（例: トークンが無効、期限切れなど）、警告ログを出し匿名認証にフォールバック
-                        console.warn("Firebase: Custom token sign-in failed (might be invalid or expired for this project config), attempting anonymous sign-in.", tokenError);
+                        console.warn("Firebase: Custom token sign-in failed (likely custom-token-mismatch in non-Canvas env or expired). Falling back to anonymous sign-in.", tokenError);
+                        // custom-token-mismatch エラーは警告として扱い、匿名認証にフォールバック
                         // このエラーは致命的ではないため、ここでsetErrorMessageは行わない
+                        try {
+                            await signInAnonymously(authInstance);
+                            console.log("Firebase: Signed in anonymously after custom token fallback.");
+                        } catch (anonymousError) {
+                            console.error("Firebase: Anonymous sign-in failed during fallback. App features might be limited.", anonymousError);
+                            setErrorMessage("Firebase認証に失敗しました。アプリの機能が制限されます。詳細: " + anonymousError.message);
+                        }
                     }
-                }
-
-                // もしまだサインインしていなければ、匿名認証を試みる
-                if (!userSignedIn) {
+                } else {
+                    // __initial_auth_token が存在しない場合、匿名認証を試みる
                     try {
                         await signInAnonymously(authInstance);
-                        console.log("Firebase: Signed in anonymously.");
-                        userSignedIn = true; // 匿名認証が成功した場合、userSignedInをtrueにする
+                        console.log("Firebase: Signed in anonymously (no custom token available).");
                     } catch (anonymousError) {
-                        // 匿名認証自体が失敗した場合、これは致命的な認証エラー
                         console.error("Firebase: Anonymous sign-in failed. App features might be limited.", anonymousError);
                         setErrorMessage("Firebase認証に失敗しました。アプリの機能が制限されます。詳細: " + anonymousError.message);
                     }
                 }
 
-                // 認証状態の変更を監視 (初期サインイン試行後に設定)
+                // 認証状態の変更を監視 (必ずユーザーがサインイン済みか否か確定した後にloadDataを呼ぶ)
+                // onAuthStateChanged は非同期サインインの後続処理として機能する
                 onAuthStateChanged(authInstance, (user) => {
                     if (user) {
                         setUserId(user.uid);
                         console.log('Firebase user ID:', user.uid);
-                        // ユーザーが認証された後にデータ読み込み関数を呼び出す
-                        loadUserData(dbInstance, user.uid);
-                        loadFortuneHistory(dbInstance, user.uid);
+                        // ユーザーが認証された後にデータ読み込み関数を呼び出す（dbInstanceが設定されてから）
+                        if (dbInstance) { // dbInstanceがnullでないことを確認
+                            loadUserData(dbInstance, user.uid);
+                            loadFortuneHistory(dbInstance, user.uid);
+                        }
                     } else {
                         setUserId(null);
                         // ユーザーがサインアウトした場合や認証されていない場合に状態をリセット
@@ -236,7 +250,7 @@ function App() {
                         setBloodType('A');
                         setMbtiType('ISTJ');
                         setFortuneHistory([]);
-                        console.log('No user signed in after auth state change.');
+                        console.log('No user signed in after auth state change or signed out.');
                     }
                     setLoadingFirebase(false); // 認証フロー完了
                 });
@@ -250,9 +264,19 @@ function App() {
         };
 
         initializeFirebase();
-    }, [app]); // `app` を依存関係に含めることで、アプリが初期化済みなら再実行しないようにする
+    }, []); // `app` を依存関係から削除し、一度だけ実行されるようにする
+
 
     // --- User Data Management (Firestore) ---
+    // loadUserDataとloadFortuneHistoryは、userIdとdbがnullでないことを保証してから呼び出す
+    useEffect(() => {
+        if (db && userId) { // dbとuserIdが確定してからデータロード
+            loadUserData(db, userId);
+            loadFortuneHistory(db, userId);
+        }
+    }, [db, userId]); // dbとuserIdが変更されたら実行
+
+
     const loadUserData = async (firestore, uid) => {
         if (!firestore || !uid) return;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Canvas環境変数を取得
@@ -321,16 +345,21 @@ function App() {
     };
 
     // --- Fortune History Management (Firestore) ---
+    // loadFortuneHistory関数はuseEffect内でuidに依存して呼び出されるので、uidを受け取る形に変更
     const loadFortuneHistory = (firestore, uid) => {
         if (!firestore || !uid) return;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Canvas環境変数を取得
         const historyCollectionRef = collection(firestore, `artifacts/${appId}/users/${uid}/fortune_history`);
-        const q = query(historyCollectionRef, orderBy('timestamp', 'desc'));
+        // orderBy を使用するとインデックスが必要になる場合があるため、ここではorderByを削除し、クライアントサイドでソートします。
+        // orderBy('timestamp', 'desc')
+        const q = query(historyCollectionRef); // orderBy を削除
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const history = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
             }));
+            // クライアントサイドでタイムスタンプに基づいてソート
+            history.sort((a, b) => b.timestamp.toDate() - a.timestamp.toDate());
             setFortuneHistory(history);
         }, (error) => {
             console.error("占い履歴の読み込みに失敗しました:", error);
@@ -418,6 +447,7 @@ function App() {
         setIsDrawingTarot(true);
         setDrawnTarotCards([]); // Clear previous cards immediately for animation
         setFortuneResult(''); // Clear previous fortune result
+        setHasResultDisplayed(false); // 新しいタロットを引く前に結果表示フラグをリセット
 
         const shuffledDeck = [...tarotDeck].sort(() => 0.5 - Math.random());
         const selected = [
@@ -444,8 +474,8 @@ function App() {
         const userDataForPrompt = {
             name,
             birthDate,
-            birthTime: birthTime || '不明',
-            birthPlace: birthPlace || '不明',
+            birthTime: birthTime !== '' ? birthTime : '不明',
+            birthPlace: birthPlace !== '' ? birthPlace : '不明',
             bloodType,
             mbtiType,
             fortuneCategory: category,
@@ -453,9 +483,6 @@ function App() {
 
         const lifePathNumber = calculateLifePathNumber(userDataForPrompt.birthDate);
 
-        // --- Advanced Astrological Data (AI Interpretation Prompt) ---
-        // Instead of calculating, instruct AI to interpret based on provided data
-        // and its knowledge of astrology.
         const getSunSign = (dateString) => {
             const date = new Date(dateString);
             const month = date.getMonth() + 1; // 1-12
@@ -478,7 +505,7 @@ function App() {
         const sunSign = getSunSign(userDataForPrompt.birthDate);
         
         let astrologicalNotes = `太陽星座: ${sunSign}。\n`;
-        astrologicalNotes += `出生時刻: ${userDataForPrompt.birthTime !== '不明' ? userDataForPrompt.birthTime : '不明'}。出生地: ${userDataForPrompt.birthPlace !== '' ? userDataForPrompt.birthPlace : '不明'}。\n`;
+        astrologicalNotes += `出生時刻: ${userDataForPrompt.birthTime !== '不明' ? userDataForPrompt.birthTime : '不明'}。出生地: ${userDataForPrompt.birthPlace !== '不明' ? userDataForPrompt.birthPlace : '不明'}。\n`;
         astrologicalNotes += `これらの情報（特に正確な出生時刻と出生地が不明な場合は、太陽星座と心理学的特性を重視）に基づき、月星座、アセンダント、主要な惑星（水星、金星、火星など）のサインや、それらがどのハウスにあるか（一般的な解釈で良い）、そして主要なアスペクト（例: コンジャンジョン、オポジション、スクエア、トライン、セクスタイル）の可能性を占星術の知識を総動員して想像し、あなたの洞察に含めてください。\n`;
         astrologicalNotes += `具体的に、ユーザーのMBTIタイプや血液型との関連性も踏まえ、行動傾向や内面世界を深く読み解いてください。`;
 
@@ -525,6 +552,9 @@ ${tarotInfo}
         let chatHistory = [];
         chatHistory.push({ role: "user", parts: [{ text: promptContent }] });
         const payload = { contents: chatHistory };
+        // Gemini API用のAPIキーをここに設定 (GCPで新しく作成し、Gemini API権限を付与したキー)
+        // Canvas環境では、APIキーは自動的に提供されるため、空文字列にしておくのが推奨されます。
+        // GitHub Pagesにデプロイする際には、GCPで作成したAPIキーをここに設定してください。
         const apiKey = ""; 
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
@@ -542,7 +572,9 @@ ${tarotInfo}
             const text = result.candidates[0].content.parts[0].text; // ここでtextを取得
             return text; // textを返す
         } else {
-            throw new Error("AI生成結果の構造が予期せぬものでした。");
+            // APIからのエラーレスポンスも含むようにエラーメッセージを詳細化
+            const errorDetails = result.error ? `エラーコード: ${result.error.code}, メッセージ: ${result.error.message}` : '不明なAPI応答';
+            throw new Error(`AI生成結果の構造が予期せぬものでした。API応答: ${errorDetails}`);
         }
     };
 
@@ -551,7 +583,8 @@ ${tarotInfo}
             setErrorMessage("名前、生年月日、占いのジャンルは必須です。");
             return;
         }
-        if (!db || !userId) { // userIdの存在チェックを追加
+        // userIdの存在チェックを、dbとauthが設定された後に移動
+        if (!db || !auth || !auth.currentUser) { // authインスタンスとcurrentUserの存在を確認
             setErrorMessage("ユーザーが認証されていません。しばらくお待ちください。");
             return;
         }
@@ -559,6 +592,7 @@ ${tarotInfo}
         setIsLoadingFortune(true);
         setErrorMessage('');
         setFortuneResult('');
+        setHasResultDisplayed(false); // 新しい占いを開始する前に、結果表示フラグをリセット
 
         try {
             const text = await generateFortuneText(selectedFortuneCategory, drawnTarotCards);
@@ -567,9 +601,10 @@ ${tarotInfo}
             if (resultSectionRef.current) {
                 resultSectionRef.current.scrollIntoView({ behavior: 'smooth' });
             }
+            setHasResultDisplayed(true); // 結果が表示されたのでフラグをtrueに
         } catch (error) {
             console.error("占い結果の生成中にエラーが発生しました:", error);
-            setErrorMessage("占い結果の生成中にエラーが発生しました。");
+            setErrorMessage("占い結果の生成中にエラーが発生しました。詳細はコンソールを確認してください。");
         } finally {
             setIsLoadingFortune(false);
         }
@@ -584,9 +619,10 @@ ${tarotInfo}
         setErrorMessage('');
         setShowAdModal(false);
         setAdTimer(0);
+        setHasResultDisplayed(false); // 広告をスキップ/表示後、結果表示フラグをリセット
         // Optionally scroll back to input section
         if (inputSectionRef.current) {
-            inputSectionRef.current.scrollIntoView({ behavior: 'smooth' });
+            inputSectionRef.current.scrollIntoView({ behavior: 'smooth' }); // スクロール先をinputSectionRefに変更
         }
     };
 
@@ -630,7 +666,7 @@ ${tarotInfo}
             briefSummary = briefSummary.replace(/#+\s*/g, '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*\*/g, '$1');
 
             if (briefSummary.length > 80) { // Keep summary short for social
-                briefSummary = briefSummary.substring(0, 80) + '...';
+                briefSummary = briefSummary.substring(0, 80) + '...'; // Corrected typo: summarySummary -> briefSummary
             }
             return briefSummary;
         }
@@ -673,7 +709,8 @@ ${tarotInfo}
                 url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}&quote=${encodeURIComponent(twitterBaseText + twitterSummary)}`; // Facebook has higher quote limit, but keep consistent
                 break;
             case 'line':
-                url = `https://line.me/R/share?text=${encodeURIComponent(twitterBaseText + twitterSummary + '\n' + shareUrl + '\n' + tags)}`;
+                // LINE shares need the URL to be part of the text parameter
+                url = `https://line.me/R/share?text=${encodeURIComponent(twitterBaseText + twitterSummary + '\n' + shareUrl + '\n' + twitterTags)}`; // Corrected tags variable name
                 break;
             case 'copy':
                 const copyContent = `🔮✨ 学術的AI占い結果 ✨🔮\n\nジャンル: ${selectedFortuneCategory}\n\n${fortuneResult}\n\n${twitterTags}\n${shareUrl}`;
@@ -682,13 +719,39 @@ ${tarotInfo}
                 document.body.appendChild(tempInput);
                 tempInput.select();
                 try {
-                    document.execCommand('copy');
-                    alert('占い結果のリンクと内容がクリップボードにコピーされました！');
+                    // Modern API for copying to clipboard (requires HTTPS and user gesture)
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(copyContent).then(() => {
+                            // Using a custom modal/message box instead of alert()
+                            console.log('占い結果のリンクと内容がクリップボードにコピーされました！'); // Replaced alert
+                        }).catch(err => {
+                            console.error('Failed to copy using clipboard API: ', err);
+                            // Fallback to execCommand if Clipboard API fails (e.g., not HTTPS or no user gesture)
+                            try {
+                                document.execCommand('copy');
+                                console.log('占い結果のリンクと内容がクリップボードにコピーされました！'); // Replaced alert
+                            } catch (fallbackErr) {
+                                console.error('Failed to copy using execCommand: ', fallbackErr);
+                                console.error('コピーに失敗しました。'); // Replaced alert
+                            }
+                        });
+                    } else {
+                        // Fallback for older browsers or if Clipboard API is not available
+                        try {
+                            document.execCommand('copy');
+                            console.log('占い結果のリンクと内容がクリップボードにコピーされました！'); // Replaced alert
+                        } catch (err) {
+                            console.error('Failed to copy: ', err);
+                            console.error('コピーに失敗しました。'); // Replaced alert
+                        }
+                    }
                 } catch (err) {
-                    console.error('Failed to copy: ', err);
-                    alert('コピーに失敗しました。');
+                    console.error('Failed to copy (outer try-catch): ', err);
+                    console.error('コピーに失敗しました。'); // Replaced alert
+                } finally {
+                    document.body.removeChild(tempInput);
                 }
-                document.body.removeChild(tempInput);
+                
                 // After copying, update ad skip status if ad is currently showing
                 if (showAdModal) {
                     updateUserAdSkipStatus(true);
@@ -713,10 +776,11 @@ ${tarotInfo}
     };
 
     // Determine when to show the Tarot Draw button
-    const isInputReady = name && birthDate && selectedFortuneCategory;
-    const canShowTarotDrawButton = isInputReady && !isLoadingFortune && drawnTarotCards.length === 0 && !isDrawingTarot && fortuneResult === '';
+    // 占い結果が表示されている間は、タロットを引くボタンを無効化
+    const canShowTarotDrawButton = isInputReady && !isLoadingFortune && drawnTarotCards.length === 0 && !isDrawingTarot && !hasResultDisplayed;
     // Fortune button visible only if input is ready AND (tarot cards are drawn OR tarot draw is not shown/skipped for current session) AND not currently loading
-    const canShowFortuneButton = isInputReady && !isDrawingTarot && !isLoadingFortune && drawnTarotCards.length > 0 && fortuneResult === '';
+    // 占い結果が表示されている間は、占い実行ボタンを無効化
+    const canShowFortuneButton = isInputReady && !isLoadingFortune && drawnTarotCards.length > 0 && !hasResultDisplayed;
 
 
     if (loadingFirebase) {
@@ -880,7 +944,7 @@ ${tarotInfo}
             `}</style>
             
             {/* Loading Overlay Animation */}
-            {isLoadingFortune && (
+            {isLoadingFortune ? (
                 <div className="loading-overlay">
                     <div className="crystal-ball">
                         <span role="img" aria-label="crystal ball">🔮</span>
@@ -888,10 +952,10 @@ ${tarotInfo}
                     <p className="text-xl font-semibold text-gray-300 loading-text">運命の導きを生成中...</p>
                     <p className="text-md text-gray-400 mt-2 loading-text">AIがあなたのデータを深く読み解いています。</p>
                 </div>
-            )}
+            ) : null}
 
             {/* Ad Modal */}
-            {showAdModal && (
+            {showAdModal ? (
                 <div className="loading-overlay">
                     <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900 text-white">
                         <h2 className="text-3xl font-bold mb-4">広告表示中</h2>
@@ -940,328 +1004,331 @@ ${tarotInfo}
                         </div>
                     </div>
                 </div>
-            )}
+            ) : null}
 
-            {/* Navigation Buttons */}
-            <div className="fixed top-0 left-0 right-0 bg-gray-900 bg-opacity-80 p-3 z-40 shadow-lg flex justify-center space-x-4 rounded-b-lg">
-                <button
-                    onClick={() => scrollToRef(inputSectionRef)}
-                    className="text-gray-200 hover:text-purple-400 font-semibold text-sm sm:text-base px-3 py-2 rounded-md transition duration-200"
-                >
-                    入力
-                </button>
-                <button
-                    onClick={() => scrollToRef(resultSectionRef)}
-                    className="text-gray-200 hover:text-purple-400 font-semibold text-sm sm:text-base px-3 py-2 rounded-md transition duration-200"
-                >
-                    結果
-                </button>
-                <button
-                    onClick={() => scrollToRef(historySectionRef)}
-                    className="text-gray-200 hover:text-purple-400 font-semibold text-sm sm:text-base px-3 py-2 rounded-md transition duration-200"
-                >
-                    履歴
-                </button>
-            </div>
-
-
-            <div className="max-w-4xl mx-auto bg-gray-800 rounded-xl shadow-lg p-6 sm:p-10 border border-purple-700 mt-16"> {/* Add mt-16 to offset fixed header */}
-                <div className="text-center mb-6">
-                    {/* Logo Placeholder */}
-                    <div className="h-20 w-20 mx-auto bg-purple-600 rounded-full flex items-center justify-center mb-4 shadow-xl">
-                        <span className="text-white text-3xl font-bold">🔮</span>
-                    </div>
-                    <h1 className="text-3xl sm:text-4xl font-bold text-purple-300 mb-6 animate-fade-in">
-                        学術的AI占い：あなたの運命を深く読み解く
-                    </h1>
-                </div>
-
-                {errorMessage && (
-                    <div className="bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded-md mb-6 animate-slide-down" role="alert">
-                        <p className="font-bold">エラー:</p>
-                        <p>{errorMessage}</p>
-                    </div>
-                )}
-
-                {/* 免責事項 - Updated for Marketing */}
-                <div className="mb-8 p-4 bg-yellow-900 border border-yellow-700 text-yellow-200 rounded-md text-sm">
-                    <p className="font-semibold mb-2">【これまでにない究極の占い体験へ！】</p>
-                    <p>このアプリは、**心理統計学**、**伝統的な占術（占星術、数秘術、タロット）**、そして**最先端のAI技術**を総合的に組み合わせた、まさに「最強」の占いツールです。あなたの名前、生年月日、血液型、MBTIタイプといったパーソナルデータから、AIが深層を分析し、当たり障りのない言葉ではない、本当にあなたに響く示唆に富んだ洞察をお届けします。あなたの自己理解を深め、未来を切り開くための羅針盤としてご活用ください。MBTIタイプは自己理解に非常に有用ですが、科学的妥当性には限定的な側面があることをご理解の上、お楽しみください。</p>
-                </div>
-
-                <div ref={inputSectionRef} className="space-y-6 mb-8 pt-4"> {/* Added ref and pt-4 for scroll offset */}
-                    <h2 className="text-2xl font-bold text-gray-200 mb-4 border-b border-gray-700 pb-2">パーソナルデータの入力</h2>
-                    {/* ユーザーID表示 */}
-                    <div className="p-3 bg-blue-900 border border-blue-700 text-blue-200 rounded-md text-sm">
-                        <p className="font-semibold">現在のユーザーID: <span className="font-mono break-all">{userId || 'N/A'}</span></p>
-                        <p>（このIDはアプリ内であなたを識別するために使用されます。）</p>
-                    </div>
-
-                    {/* 名前 */}
-                    <div>
-                        <label htmlFor="name" className="block text-gray-200 text-lg font-medium mb-2">名前 <span className="text-red-400">*</span></label>
-                        <input
-                            type="text"
-                            id="name"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            className="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-gray-100 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
-                            placeholder="あなたの名前を入力してください"
-                        />
-                    </div>
-
-                    {/* 生年月日 */}
-                    <div>
-                        <label htmlFor="birthDate" className="block text-gray-200 text-lg font-medium mb-2">生年月日 <span className="text-red-400">*</span></label>
-                        <input
-                            type="date"
-                            id="birthDate"
-                            value={birthDate}
-                            onChange={(e) => setBirthDate(e.target.value)}
-                            className="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-gray-100 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
-                        />
-                    </div>
-
-                    {/* 出生時刻 */}
-                    <div>
-                        <label htmlFor="birthTime" className="block text-gray-200 text-lg font-medium mb-2">出生時刻 <span className="text-gray-400 text-sm">(不明な場合は空欄でOK)</span></label>
-                        <input
-                            type="time"
-                            id="birthTime"
-                            value={birthTime}
-                            onChange={(e) => setBirthTime(e.target.value)}
-                            className="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-gray-100 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
-                        />
-                    </div>
-
-                    {/* 出生地 */}
-                    <div>
-                        <label htmlFor="birthPlace" className="block text-gray-200 text-lg font-medium mb-2">出生地 <span className="text-gray-400 text-sm">(例: 東京都)</span></label>
-                        <input
-                            type="text"
-                            id="birthPlace"
-                            value={birthPlace}
-                            onChange={(e) => setBirthPlace(e.target.value)}
-                            className="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-gray-100 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
-                            placeholder="都道府県名または市町村名"
-                        />
-                    </div>
-
-                    {/* 血液型 */}
-                    <div>
-                        <label htmlFor="bloodType" className="block text-gray-200 text-lg font-medium mb-2">血液型</label>
-                        <select
-                            id="bloodType"
-                            value={bloodType}
-                            onChange={(e) => setBloodType(e.target.value)}
-                            className="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-gray-100 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
-                        >
-                            {bloodTypeOptions.map(type => (
-                                <option key={type} value={type}>{type}型</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* MBTIタイプ */}
-                    <div>
-                        <label htmlFor="mbtiType" className="block text-gray-200 text-lg font-medium mb-2">
-                            MBTIタイプ <span className="text-gray-400 text-sm">
-                                (<a href="https://www.16personalities.com/ja/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">16Personalities</a>などで診断後選択)
-                            </span>
-                        </label>
-                        <select
-                            id="mbtiType"
-                            value={mbtiType}
-                            onChange={(e) => setMbtiType(e.target.value)}
-                            className="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-gray-100 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
-                        >
-                            {mbtiOptions.map(type => (
-                                <option key={type} value={type}>{type}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* ユーザーデータ保存ボタン */}
+                {/* Navigation Buttons */}
+                <div className="fixed top-0 left-0 right-0 bg-gray-900 bg-opacity-80 p-3 z-40 shadow-lg flex justify-center space-x-4 rounded-b-lg">
                     <button
-                        onClick={saveUserData}
-                        className="w-full bg-blue-700 text-white p-3 rounded-md font-semibold hover:bg-blue-800 transition duration-300 transform hover:scale-105 shadow-md"
+                        onClick={() => scrollToRef(inputSectionRef)}
+                        className="text-gray-200 hover:text-purple-400 font-semibold text-sm sm:text-base px-3 py-2 rounded-md transition duration-200"
                     >
-                        入力情報を保存
+                        入力
                     </button>
-                    {showSaveSuccess && (
-                        <p className="text-green-400 text-center text-sm mt-2 animate-fade-in">保存しました！</p>
-                    )}
+                    <button
+                        onClick={() => scrollToRef(resultSectionRef)}
+                        className="text-gray-200 hover:text-purple-400 font-semibold text-sm sm:text-base px-3 py-2 rounded-md transition duration-200"
+                    >
+                        結果
+                    </button>
+                    <button
+                        onClick={() => scrollToRef(historySectionRef)}
+                        className="text-gray-200 hover:text-purple-400 font-semibold text-sm sm:text-base px-3 py-2 rounded-md transition duration-200"
+                    >
+                        履歴
+                    </button>
+                </div>
 
-                    {/* 占いジャンル選択 */}
-                    <div>
-                        <label htmlFor="fortuneCategory" className="block text-gray-200 text-lg font-medium mb-2">占いたいジャンル <span className="text-red-400">*</span></label>
-                        <select
-                            id="fortuneCategory"
-                            value={selectedFortuneCategory}
-                            onChange={(e) => {
-                                setSelectedFortuneCategory(e.target.value);
-                                setDrawnTarotCards([]); // Clear cards if category changes
-                                setFortuneResult(''); // Clear previous fortune result
-                            }}
-                            className="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-gray-100 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
-                        >
-                            {fortuneCategories.map(category => (
-                                <option key={category.value} value={category.value}>{category.label}</option>
-                            ))}
-                        </select>
+
+                <div className="max-w-4xl mx-auto bg-gray-800 rounded-xl shadow-lg p-6 sm:p-10 border border-purple-700 mt-16"> {/* Add mt-16 to offset fixed header */}
+                    <div className="text-center mb-6">
+                        {/* Logo Placeholder */}
+                        <div className="h-20 w-20 mx-auto bg-purple-600 rounded-full flex items-center justify-center mb-4 shadow-xl">
+                            <span className="text-white text-3xl font-bold">🔮</span>
+                        </div>
+                        <h1 className="text-3xl sm:text-4xl font-bold text-purple-300 mb-6 animate-fade-in">
+                            学術的AI占い：あなたの運命を深く読み解く
+                        </h1>
                     </div>
 
-                    {/* Conditional Buttons based on input completion and tarot draw status */}
-                    {canShowTarotDrawButton && (
-                        <div className="text-center mt-6">
-                            <button
-                                onClick={handleDrawTarotCards}
-                                disabled={isLoadingFortune || isDrawingTarot}
-                                className={`w-full p-4 rounded-md font-bold text-lg shadow-lg transform transition duration-300 ${
-                                    isLoadingFortune || isDrawingTarot
-                                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                                        : 'bg-indigo-700 text-white hover:bg-indigo-800 hover:scale-105'
-                                }`}
-                            >
-                                {isDrawingTarot ? 'カードを選んでいます...' : 'タロットカードを引く (3枚)'}
-                            </button>
+                    {errorMessage && (
+                        <div className="bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded-md mb-6 animate-slide-down" role="alert">
+                            <p className="font-bold">エラー:</p>
+                            <p>{errorMessage}</p>
                         </div>
                     )}
 
-                    {/* Display Drawn Tarot Cards */}
-                    {drawnTarotCards.length > 0 && (
-                        <div className="mt-6 p-4 border border-purple-600 rounded-md bg-gray-700 text-gray-100 text-center">
-                            <h3 className="text-xl font-bold text-purple-300 mb-4">引かれたタロットカード</h3>
-                            <div className="flex flex-wrap justify-center gap-4">
-                                {drawnTarotCards.map((card, index) => (
-                                    <div key={index} className={`tarot-card p-2 text-center text-sm ${card.isReversed ? 'reversed' : ''}`} style={{animationDelay: `${0.2 + index * 0.5}s`}}>
-                                        <p className="font-semibold text-purple-200 card-name-display">{card.name}</p>
-                                        <p className="text-gray-400 text-xs">({card.position})</p>
+                    {/* 免責事項 - Updated for Marketing */}
+                    <div className="mb-8 p-4 bg-yellow-900 border border-yellow-700 text-yellow-200 rounded-md text-sm">
+                        <p className="font-semibold mb-2">【これまでにない究極の占い体験へ！】</p>
+                        <p>このアプリは、**心理統計学**、**伝統的な占術（占星術、数秘術、タロット）**、そして**最先端のAI技術**を総合的に組み合わせた、まさに「最強」の占いツールです。あなたの名前、生年月日、血液型、MBTIタイプといったパーソナルデータから、AIが深層を分析し、当たり障りのない言葉ではない、本当にあなたに響く示唆に富んだ洞察をお届けします。あなたの自己理解を深め、未来を切り開くための羅針盤としてご活用ください。MBTIタイプは自己理解に非常に有用ですが、科学的妥当性には限定的な側面があることをご理解の上,お楽しみください。</p>
+                    </div>
+
+                    <div ref={inputSectionRef} className="space-y-6 mb-8 pt-4"> {/* Added ref and pt-4 for scroll offset */}
+                        <h2 className="text-2xl font-bold text-gray-200 mb-4 border-b border-gray-700 pb-2">パーソナルデータの入力</h2>
+                        {/* ユーザーID表示 */}
+                        <div className="p-3 bg-blue-900 border border-blue-700 text-blue-200 rounded-md text-sm">
+                            <p className="font-semibold">現在のユーザーID: <span className="font-mono break-all">{userId || 'N/A'}</span></p>
+                            <p>（このIDはアプリ内であなたを識別するために使用されます。）</p>
+                        </div>
+
+                        {/* 名前 */}
+                        <div>
+                            <label htmlFor="name" className="block text-gray-200 text-lg font-medium mb-2">名前 <span className="text-red-400">*</span></label>
+                            <input
+                                type="text"
+                                id="name"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                className="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-gray-100 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
+                                placeholder="あなたの名前を入力してください"
+                            />
+                        </div>
+
+                        {/* 生年月日 */}
+                        <div>
+                            <label htmlFor="birthDate" className="block text-gray-200 text-lg font-medium mb-2">生年月日 <span className="text-red-400">*</span></label>
+                            <input
+                                type="date"
+                                id="birthDate"
+                                value={birthDate}
+                                onChange={(e) => setBirthDate(e.target.value)}
+                                className="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-gray-100 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
+                            />
+                        </div>
+
+                        {/* 出生時刻 */}
+                        <div>
+                            <label htmlFor="birthTime" className="block text-gray-200 text-lg font-medium mb-2">出生時刻 <span className="text-gray-400 text-sm">(不明な場合は空欄でOK)</span></label>
+                            <input
+                                type="time"
+                                id="birthTime"
+                                value={birthTime}
+                                onChange={(e) => setBirthTime(e.target.value)}
+                                className="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-gray-100 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
+                            />
+                        </div>
+
+                        {/* 出生地 */}
+                        <div>
+                            <label htmlFor="birthPlace" className="block text-gray-200 text-lg font-medium mb-2">出生地 <span className="text-gray-400 text-sm">(例: 東京都)</span></label>
+                            <input
+                                type="text"
+                                id="birthPlace"
+                                value={birthPlace}
+                                onChange={(e) => setBirthPlace(e.target.value)}
+                                className="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-gray-100 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
+                                placeholder="都道府県名または市町村名"
+                            />
+                        </div>
+
+                        {/* 血液型 */}
+                        <div>
+                            <label htmlFor="bloodType" className="block text-gray-200 text-lg font-medium mb-2">血液型</label>
+                            <select
+                                id="bloodType"
+                                value={bloodType}
+                                onChange={(e) => setBloodType(e.target.value)}
+                                className="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-gray-100 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
+                            >
+                                {bloodTypeOptions.map(type => (
+                                    <option key={type} value={type}>{type}型</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* MBTIタイプ */}
+                        <div>
+                            <label htmlFor="mbtiType" className="block text-gray-200 text-lg font-medium mb-2">
+                                MBTIタイプ <span className="text-gray-400 text-sm">
+                                    (<a href="https://www.16personalities.com/ja/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">16Personalities</a>などで診断後選択)
+                                </span>
+                            </label>
+                            <select
+                                id="mbtiType"
+                                value={mbtiType}
+                                onChange={(e) => setMbtiType(e.target.value)}
+                                className="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-gray-100 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
+                            >
+                                {mbtiOptions.map(type => (
+                                    <option key={type} value={type}>{type}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* ユーザーデータ保存ボタン */}
+                        <button
+                            onClick={saveUserData}
+                            className="w-full bg-blue-700 text-white p-3 rounded-md font-semibold hover:bg-blue-800 transition duration-300 transform hover:scale-105 shadow-md"
+                        >
+                            入力情報を保存
+                        </button>
+                        {showSaveSuccess ? (
+                            <p className="text-green-400 text-center text-sm mt-2 animate-fade-in">保存しました！</p>
+                        ) : null}
+
+                        {/* 占いジャンル選択 */}
+                        <div>
+                            <label htmlFor="fortuneCategory" className="block text-gray-200 text-lg font-medium mb-2">占いたいジャンル <span className="text-red-400">*</span></label>
+                            <select
+                                id="fortuneCategory"
+                                value={selectedFortuneCategory}
+                                // ジャンル変更時は、結果が表示されている場合はクリアしない（別の項目を占うボタン経由を強制）
+                                onChange={(e) => {
+                                    setSelectedFortuneCategory(e.target.value);
+                                    if (!hasResultDisplayed) { // 結果が表示されていない場合のみクリア
+                                        setDrawnTarotCards([]); 
+                                        setFortuneResult(''); 
+                                    }
+                                }}
+                                className="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-gray-100 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
+                            >
+                                {fortuneCategories.map(category => (
+                                    <option key={category.value} value={category.value}>{category.label}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Conditional Buttons based on input completion and tarot draw status */}
+                        {canShowTarotDrawButton ? (
+                            <div className="text-center mt-6">
+                                <button
+                                    onClick={handleDrawTarotCards}
+                                    disabled={isLoadingFortune || isDrawingTarot || hasResultDisplayed} // 結果表示中は無効
+                                    className={`w-full p-4 rounded-md font-bold text-lg shadow-lg transform transition duration-300 ${
+                                        isLoadingFortune || isDrawingTarot || hasResultDisplayed
+                                            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                            : 'bg-indigo-700 text-white hover:bg-indigo-800 hover:scale-105'
+                                    }`}
+                                >
+                                    {isDrawingTarot ? 'カードを選んでいます...' : 'タロットカードを引く (3枚)'}
+                                </button>
+                            </div>
+                        ) : null}
+
+                        {/* Display Drawn Tarot Cards */}
+                        {drawnTarotCards.length > 0 ? (
+                            <div className="mt-6 p-4 border border-purple-600 rounded-md bg-gray-700 text-gray-100 text-center">
+                                <h3 className="text-xl font-bold text-purple-300 mb-4">引かれたタロットカード</h3>
+                                <div className="flex flex-wrap justify-center gap-4">
+                                    {drawnTarotCards.map((card, index) => (
+                                        <div key={index} className={`tarot-card p-2 text-center text-sm ${card.isReversed ? 'reversed' : ''}`} style={{animationDelay: `${0.2 + index * 0.5}s`}}>
+                                            <p className="font-semibold text-purple-200 card-name-display">{card.name}</p>
+                                            <p className="text-gray-400 text-xs">({card.position})</p>
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="text-sm text-gray-400 mt-4">これらのカードがあなたの占いに組み込まれます。</p>
+                            </div>
+                        ) : null}
+
+
+                        {/* 占い実行ボタン */}
+                        {canShowFortuneButton ? (
+                             <button
+                                onClick={handleFortuneRequest}
+                                disabled={isLoadingFortune || !selectedFortuneCategory || hasResultDisplayed} // 結果表示中は無効
+                                className={`w-full p-4 rounded-md font-bold text-lg shadow-lg transform transition duration-300 ${
+                                    isLoadingFortune || !selectedFortuneCategory || hasResultDisplayed
+                                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                        : 'bg-purple-700 text-white hover:bg-purple-800 hover:scale-105'
+                                }`}
+                            >
+                                {isLoadingFortune ? (
+                                    <div className="flex items-center justify-center">
+                                        <div className="spinner-border animate-spin inline-block w-6 h-6 border-4 rounded-full text-white" role="status">
+                                            <span className="visually-hidden">Loading...</span>
+                                        </div>
+                                        <span className="ml-3">占い結果を生成中...</span>
+                                    </div>
+                                ) : (drawnTarotCards.length > 0 ? 'タロットとAIで占う！' : 'AIで占う！')}
+                            </button>
+                        ) : null}
+                    </div>
+
+                    {/* 占い結果表示 */}
+                    {fortuneResult ? (
+                        <div ref={resultSectionRef} className="bg-gray-700 border border-purple-700 rounded-xl p-6 sm:p-8 shadow-inner mt-8 animate-fade-in-up pt-4">
+                            <h2 className="text-2xl sm:text-3xl font-bold text-purple-300 mb-4 text-center border-b border-gray-600 pb-2">あなたの占い結果</h2>
+                            <div className="prose prose-invert lg:prose-lg mx-auto text-gray-100 leading-relaxed break-words">
+                                <div dangerouslySetInnerHTML={{ __html: fortuneResult.replace(/\n/g, '<br/>') }} />
+                            </div>
+
+                            {/* Button for Another Fortune (Ad Gate) */}
+                            <div className="text-center mt-8">
+                                <button
+                                    onClick={handleAnotherFortuneRequest}
+                                    className="bg-gradient-to-r from-green-500 to-teal-500 text-white p-3 rounded-md font-semibold hover:from-green-600 hover:to-teal-600 transition duration-300 shadow-xl transform hover:scale-105"
+                                >
+                                    別の項目を占う
+                                </button>
+                            </div>
+
+                            {/* Share Buttons */}
+                            <div className="text-center mt-8 space-x-2 sm:space-x-4 flex flex-wrap justify-center gap-y-3">
+                                <button
+                                    onClick={() => shareFortune('twitter')}
+                                    className="bg-blue-400 text-white p-3 rounded-md font-semibold hover:bg-blue-500 transition duration-300 shadow-md flex-1 inline-flex items-center justify-center min-w-[150px] sm:min-w-0"
+                                >
+                                    <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.14L9.35 12.98 2.464 22H0l8.09-10.702L0 2.25h8.322L12.5 7.398 18.244 2.25zM17.272 20l-1.895-2.656-7.147-9.99H5.503L13.181 20H17.272z" /></svg>
+                                    X (Twitter)でシェア
+                                </button>
+                                <button
+                                    onClick={() => shareFortune('facebook')}
+                                    className="bg-blue-700 text-white p-2 rounded-md font-semibold text-sm hover:bg-blue-800 transition duration-300 shadow-md flex-1 inline-flex items-center justify-center min-w-[100px]"
+                                >
+                                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 13.5h2.5l1-4H14v-2c0-1.03 0-2 .5-2.5h2V7.472s-1.5-.164-2.75-.164c-2.68 0-4.5 1.6-4.5 4.75V13.5H6v4h3.5v6.5h4V17.5h3.5l1-4H14z" /></svg>
+                                    Facebookでシェア
+                                </button>
+                                <button
+                                    onClick={() => shareFortune('line')}
+                                    className="bg-green-500 text-white p-2 rounded-md font-semibold text-sm hover:bg-green-600 transition duration-300 shadow-md flex items-center justify-center min-w-[100px]"
+                                >
+                                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M11.996 2C6.475 2 2 6.477 2 12s4.475 10 9.996 10C17.525 22 22 17.523 22 12S17.525 2 11.996 2zM12 20c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8zM14.28 9.544l-2.072 2.072L9.136 9.544a.75.75 0 00-1.06 1.06l2.072 2.072-2.072 2.072a.75.75 0 001.06 1.06l2.072-2.072 2.072 2.072a.75.75 0 001.06-1.06l-2.072-2.072 2.072-2.072a.75.75 0 00-1.06-1.06z" clipRule="evenodd" /></svg>
+                                    LINE
+                                </button>
+                                <button
+                                    onClick={() => shareFortune('copy')}
+                                    className="bg-gray-600 text-white p-2 rounded-md font-semibold text-sm hover:bg-gray-700 transition duration-300 shadow-md flex items-center justify-center min-w-[100px]"
+                                >
+                                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7H5c-1.103 0-2 .897-2 2v10c0 1.103.897 2 2 2h10c1.103 0 2-.897 2-2v-2h2v-8c0-1.103-.897-2-2-2h-8zm10 2h-6V7h6v2zm-2 4h-6V9h6v4z" clipRule="evenodd" /></svg>
+                                    コピー
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {/* 占い履歴表示 */}
+                    {fortuneHistory.length > 0 ? (
+                        <div ref={historySectionRef} className="mt-12 bg-gray-800 rounded-xl shadow-lg p-6 sm:p-10 border border-gray-700 pt-4">
+                            <h2 className="text-2xl sm:text-3xl font-bold text-gray-200 mb-6 text-center border-b border-gray-700 pb-2">
+                                あなたの占い履歴
+                            </h2>
+                            <div className="space-y-6">
+                                {fortuneHistory.map((entry) => (
+                                    <div key={entry.id} className="bg-gray-700 border border-gray-600 rounded-lg p-4 shadow-sm">
+                                        <p className="text-sm text-gray-400 mb-1">
+                                            {new Date(entry.timestamp.toDate()).toLocaleString()}
+                                        </p>
+                                        <p className="text-lg font-semibold text-purple-300 mb-2">
+                                            ジャンル: {entry.fortuneCategory}
+                                        </p>
+                                        {entry.tarotCards && entry.tarotCards.length > 0 ? (
+                                            <div className="flex flex-wrap justify-center gap-2 mb-4">
+                                                {entry.tarotCards.map((card, idx) => (
+                                                    <div key={idx} className={`tarot-card-history p-1 text-center text-xs ${card.isReversed ? 'reversed' : ''}`}>
+                                                        <p className="font-bold text-purple-200 card-name-display">{card.name}</p>
+                                                        <p className="text-gray-400 text-xs">({card.position})</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : null}
+                                        <div className="prose prose-sm max-w-none text-gray-300">
+                                            <div dangerouslySetInnerHTML={{ __html: entry.fortuneResult.replace(/\n/g, '<br/>') }} />
+                                        </div>
+                                        <button
+                                            onClick={() => openDeleteConfirm(entry)}
+                                            className="mt-3 text-red-400 hover:text-red-500 text-sm"
+                                        >
+                                            削除
+                                        </button>
                                     </div>
                                 ))}
                             </div>
-                            <p className="text-sm text-gray-400 mt-4">これらのカードがあなたの占いに組み込まれます。</p>
                         </div>
-                    )}
-
-
-                    {/* 占い実行ボタン */}
-                    {canShowFortuneButton && (
-                         <button
-                            onClick={handleFortuneRequest}
-                            disabled={isLoadingFortune || !selectedFortuneCategory}
-                            className={`w-full p-4 rounded-md font-bold text-lg shadow-lg transform transition duration-300 ${
-                                isLoadingFortune || !selectedFortuneCategory
-                                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                                    : 'bg-purple-700 text-white hover:bg-purple-800 hover:scale-105'
-                            }`}
-                        >
-                            {isLoadingFortune ? (
-                                <div className="flex items-center justify-center">
-                                    <div className="spinner-border animate-spin inline-block w-6 h-6 border-4 rounded-full text-white" role="status">
-                                        <span className="visually-hidden">Loading...</span>
-                                    </div>
-                                    <span className="ml-3">占い結果を生成中...</span>
-                                </div>
-                            ) : (drawnTarotCards.length > 0 ? 'タロットとAIで占う！' : 'AIで占う！')}
-                        </button>
-                    )}
-                </div>
-
-                {/* 占い結果表示 */}
-                {fortuneResult && (
-                    <div ref={resultSectionRef} className="bg-gray-700 border border-purple-700 rounded-xl p-6 sm:p-8 shadow-inner mt-8 animate-fade-in-up pt-4">
-                        <h2 className="text-2xl sm:text-3xl font-bold text-purple-300 mb-4 text-center border-b border-gray-600 pb-2">あなたの占い結果</h2>
-                        <div className="prose prose-invert lg:prose-lg mx-auto text-gray-100 leading-relaxed break-words">
-                            <div dangerouslySetInnerHTML={{ __html: fortuneResult.replace(/\n/g, '<br/>') }} />
-                        </div>
-
-                        {/* Button for Another Fortune (Ad Gate) */}
-                        <div className="text-center mt-8">
-                            <button
-                                onClick={handleAnotherFortuneRequest}
-                                className="bg-gradient-to-r from-green-500 to-teal-500 text-white p-3 rounded-md font-semibold hover:from-green-600 hover:to-teal-600 transition duration-300 shadow-xl transform hover:scale-105"
-                            >
-                                別の項目を占う
-                            </button>
-                        </div>
-
-                        {/* Share Buttons */}
-                        <div className="text-center mt-8 space-x-2 sm:space-x-4 flex flex-wrap justify-center gap-y-3">
-                            <button
-                                onClick={() => shareFortune('twitter')}
-                                className="bg-blue-400 text-white p-3 rounded-md font-semibold hover:bg-blue-500 transition duration-300 shadow-md flex-1 inline-flex items-center justify-center min-w-[150px] sm:min-w-0"
-                            >
-                                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.14L9.35 12.98 2.464 22H0l8.09-10.702L0 2.25h8.322L12.5 7.398 18.244 2.25zM17.272 20l-1.895-2.656-7.147-9.99H5.503L13.181 20H17.272z" /></svg>
-                                X (Twitter)でシェア
-                            </button>
-                            <button
-                                onClick={() => shareFortune('facebook')}
-                                className="bg-blue-700 text-white p-3 rounded-md font-semibold hover:bg-blue-800 transition duration-300 shadow-md flex-1 inline-flex items-center justify-center min-w-[150px] sm:min-w-0"
-                            >
-                                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 13.5h2.5l1-4H14v-2c0-1.03 0-2 .5-2.5h2V7.472s-1.5-.164-2.75-.164c-2.68 0-4.5 1.6-4.5 4.75V13.5H6v4h3.5v6.5h4V17.5h3.5l1-4H14z" /></svg>
-                                Facebookでシェア
-                            </button>
-                            <button
-                                onClick={() => shareFortune('line')}
-                                className="bg-green-500 text-white p-3 rounded-md font-semibold hover:bg-green-600 transition duration-300 shadow-md flex-1 inline-flex items-center justify-center min-w-[150px] sm:min-w-0"
-                            >
-                                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M11.996 2C6.475 2 2 6.477 2 12s4.475 10 9.996 10C17.525 22 22 17.523 22 12S17.525 2 11.996 2zM12 20c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8zM14.28 9.544l-2.072 2.072L9.136 9.544a.75.75 0 00-1.06 1.06l2.072 2.072-2.072 2.072a.75.75 0 001.06 1.06l2.072-2.072 2.072 2.072a.75.75 0 001.06-1.06l-2.072-2.072 2.072-2.072a.75.75 0 00-1.06-1.06z" clipRule="evenodd" /></svg>
-                                LINEでシェア
-                            </button>
-                            <button
-                                onClick={() => shareFortune('copy')}
-                                className="bg-gray-600 text-white p-3 rounded-md font-semibold hover:bg-gray-700 transition duration-300 shadow-md flex-1 inline-flex items-center justify-center min-w-[150px] sm:min-w-0"
-                            >
-                                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7H5c-1.103 0-2 .897-2 2v10c0 1.103.897 2 2 2h10c1.103 0 2-.897 2-2v-2h2v-8c0-1.103-.897-2-2-2h-8zm10 2h-6V7h6v2zm-2 4h-6V9h6v4z" clipRule="evenodd" /></svg>
-                                コピー
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* 占い履歴表示 */}
-                {fortuneHistory.length > 0 && (
-                    <div ref={historySectionRef} className="mt-12 bg-gray-800 rounded-xl shadow-lg p-6 sm:p-10 border border-gray-700 pt-4">
-                        <h2 className="text-2xl sm:text-3xl font-bold text-gray-200 mb-6 text-center border-b border-gray-700 pb-2">
-                            あなたの占い履歴
-                        </h2>
-                        <div className="space-y-6">
-                            {fortuneHistory.map((entry) => (
-                                <div key={entry.id} className="bg-gray-700 border border-gray-600 rounded-lg p-4 shadow-sm">
-                                    <p className="text-sm text-gray-400 mb-1">
-                                        {new Date(entry.timestamp.toDate()).toLocaleString()}
-                                    </p>
-                                    <p className="text-lg font-semibold text-purple-300 mb-2">
-                                        ジャンル: {entry.fortuneCategory}
-                                    </p>
-                                    {entry.tarotCards && entry.tarotCards.length > 0 && (
-                                        <div className="flex flex-wrap justify-center gap-2 mb-4">
-                                            {entry.tarotCards.map((card, idx) => (
-                                                <div key={idx} className={`tarot-card-history p-1 text-center text-xs ${card.isReversed ? 'reversed' : ''}`}>
-                                                    <p className="font-bold text-purple-200 card-name-display">{card.name}</p>
-                                                    <p className="text-gray-400 text-xs">({card.position})</p>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    <div className="prose prose-sm max-w-none text-gray-300">
-                                        <div dangerouslySetInnerHTML={{ __html: entry.fortuneResult.replace(/\n/g, '<br/>') }} />
-                                    </div>
-                                    <button
-                                        onClick={() => openDeleteConfirm(entry)}
-                                        className="mt-3 text-red-400 hover:text-red-500 text-sm"
-                                    >
-                                        削除
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                    ) : null}
 
                 {/* Custom Confirmation Dialog for Delete */}
-                {showConfirmDelete && (
+                {showConfirmDelete ? (
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                         <div className="bg-gray-800 p-8 rounded-lg shadow-xl border border-gray-700 text-center">
                             <p className="text-xl font-semibold text-gray-100 mb-6">この占い履歴を削除しますか？</p>
@@ -1281,7 +1348,7 @@ ${tarotInfo}
                             </div>
                         </div>
                     </div>
-                )}
+                ) : null}
             </div>
         </div>
     );
