@@ -182,8 +182,8 @@ function App() {
                 const firebaseConfig = typeof __firebase_config !== 'undefined'
                     ? JSON.parse(__firebase_config)
                     : {
-                        // Firebase SDKが使用するAPIキー。GCPで新しく作成したキー (AIzaSyCwe-7ih-aAZMVCrIZ8iZZLucOO3ZvZROQ) をここに設定します。
-                        // このキーには、Identity Toolkit APIとGemini APIの両方の権限が付与されている必要があります。
+                        // Firebase SDKが使用するAPIキー。GCPで作成し、Identity Toolkit APIとGemini API両方の権限を付与したキーを設定します。
+                        // このキーのリファラー制限には、GitHub PagesのURLと現在のCanvasのURLの両方が必要です。
                         apiKey: "AIzaSyCwe-7ih-aAZMVCrIZ8iZZLucOO3ZvZROQ", 
                         authDomain: "myfortuneapp-c7667.firebaseapp.com",
                         projectId: "myfortuneapp-c7667",
@@ -208,13 +208,12 @@ function App() {
                         console.log("Firebase: Signed in with custom token from Canvas.");
                     } catch (tokenError) {
                         console.warn("Firebase: Custom token sign-in failed (likely custom-token-mismatch in non-Canvas env or expired). Falling back to anonymous sign-in.", tokenError);
-                        // custom-token-mismatch エラーは警告として扱い、匿名認証にフォールバック
                         // このエラーは致命的ではないため、ここでsetErrorMessageは行わない
                         try {
                             await signInAnonymously(authInstance);
                             console.log("Firebase: Signed in anonymously after custom token fallback.");
                         } catch (anonymousError) {
-                            console.error("Firebase: Anonymous sign-in failed during fallback. App features might be limited.", anonymousError);
+                            console.error("Firebase: Anonymous sign-in failed. App features might be limited.", anonymousError);
                             setErrorMessage("Firebase認証に失敗しました。アプリの機能が制限されます。詳細: " + anonymousError.message);
                         }
                     }
@@ -552,10 +551,10 @@ ${tarotInfo}
         let chatHistory = [];
         chatHistory.push({ role: "user", parts: [{ text: promptContent }] });
         const payload = { contents: chatHistory };
-        // Gemini API用のAPIキーをここに設定 (GCPで新しく作成し、Gemini API権限を付与したキー)
-        // Canvas環境では、APIキーは自動的に提供されるため、空文字列にしておくのが推奨されます。
-        // GitHub Pagesにデプロイする際には、GCPで作成したAPIキーをここに設定してください。
-        const apiKey = ""; 
+        // Gemini API用のAPIキーをここに設定 (GCPで新しく作成し、Gemini API権限とリファラー制限を付与したキー)
+        // Canvas環境でテストする場合は、CanvasのURLをHTTPリファラー制限に追加してください。
+        // GitHub Pagesにデプロイする際も、公開URLをHTTPリファラー制限に追加してください。
+        const apiKey = "AIzaSyCwe-7ih-aAZMVCrIZ8iZZLucOO3ZvZROQ"; 
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
         const response = await fetch(apiUrl, {
@@ -682,7 +681,7 @@ ${tarotInfo}
         const summaryForShare = getSummaryFromMarkdown(fortuneResult);
 
         // Optimized X (Twitter) share text to be catchy and fit character limits
-        // 280 chars limit. URLs become 23 chars. Hash tags count.
+        // 280 chars limit. URLs becomes 23 chars. Hash tags count.
         const twitterBaseText = `驚愕の的中率！私のAI占いはコレ🔮✨\n\nジャンル: ${selectedFortuneCategory}`;
         const twitterSummary = summaryForShare ? `\n【まとめ】${summaryForShare}` : '';
         const twitterTags = `#AI占い #本格占い`;
