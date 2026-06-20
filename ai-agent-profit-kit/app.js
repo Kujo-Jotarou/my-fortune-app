@@ -1,0 +1,13 @@
+const yen=n=>new Intl.NumberFormat('ja-JP',{style:'currency',currency:'JPY',maximumFractionDigits:0}).format(n||0);
+const data={
+ support:{name:'問い合わせ一次返信エージェント',gain:0.012,plan:'よくある質問・料金・納期・予約導線をまとめ、DMやメールの一次返信を半自動化します。返信速度を上げ、取りこぼしを減らすのが狙いです。'},
+ content:{name:'投稿・記事の下書きエージェント',gain:0.008,plan:'ターゲット、悩み、実績、CTAを入力すると、SNS投稿・note見出し・短い販売文をまとめて作る仕組みを作ります。'},
+ lead:{name:'見込み客リスト化エージェント',gain:0.015,plan:'誰に何を売るかを整理し、検索キーワード、投稿ネタ、無料配布物、DMの入口を作る自動化から始めます。'},
+ estimate:{name:'見積もり・提案書エージェント',gain:0.018,plan:'ヒアリング項目、課題、納品物、価格、次の行動をテンプレ化し、提案書作成時間を短縮します。'},
+ onboarding:{name:'購入後フォローエージェント',gain:0.01,plan:'購入後の案内、使い方、次の商品への導線を自動で整え、満足度と再購入率を上げる流れを作ります。'}
+};
+function v(id){return Number(document.getElementById(id).value)||0}
+function text(id,value){document.getElementById(id).textContent=value}
+function diagnose(e){e.preventDefault();const role=document.getElementById('role').value;const pain=document.getElementById('pain').value;const leads=v('leads'),price=v('price'),rate=v('closeRate')/100,hours=v('hours'),hourly=v('hourly');const d=data[pain];const saved=hours*4.3*hourly;const upside=leads*price*d.gain;const base=leads*price*rate;const score=Math.min(100,Math.round((hours*7)+(leads/10)+(price/1000)+(rate*100)));let title='まずは小さく検証';let note='無料ツールやテンプレ販売と相性があります。数字を追いながら1つだけ自動化してください。';if(score>=75){title='今すぐ商品化レベル';note='手作業の痛みと売上余地が大きいです。無料診断→有料テンプレ→個別相談の順で出せます。'}else if(score>=45){title='テスト販売向き';note='小さな有料noteやテンプレ商品で反応を見る段階です。'}text('scoreTitle',title);text('scoreText',note);document.getElementById('meterBar').style.width=score+'%';text('agentPlan',d.name+'：'+d.plan);text('impact',`現在の月間売上目安 ${yen(base)}。時間削減 ${yen(saved)} / 月、改善売上 ${yen(upside)} / 月、合計インパクト仮説 ${yen(saved+upside)} / 月。`);const offer=`${d.name}を使って、${roleLabel(role)}が最初の7日で手作業を減らす実践キット`;text('offer',offer);const prompt=`あなたは業務改善のAIエージェント設計者です。\n立場:${roleLabel(role)}\n課題:${d.name}\n月の問い合わせ数:${leads}\n平均単価:${price}円\n現在の成約率:${Math.round(rate*100)}%\n週の手作業時間:${hours}時間\n\n上記を前提に、1.自動化する作業 2.必要な入力項目 3.返信テンプレ 4.失敗パターン 5.7日間の実行手順 を作ってください。`;text('promptOutput',prompt);const days=['現状の手作業を10個書き出す','一番時間を奪う作業を1つ選ぶ','よくある質問と回答を20個作る','返信・提案・投稿のテンプレを作る','無料診断ページに導線を置く','noteの無料部分で問題提起を書く','有料部分にテンプレと手順を入れて公開する'];const ol=document.getElementById('sevenDays');ol.innerHTML='';days.forEach(x=>{const li=document.createElement('li');li.textContent=x;ol.appendChild(li)});document.getElementById('result').classList.remove('hidden');}
+function roleLabel(r){return{creator:'クリエイター',freelancer:'フリーランス',shop:'店舗・個人事業',company:'小規模会社'}[r]||'事業者'}
+document.getElementById('fitForm').addEventListener('submit',diagnose);document.getElementById('copyPrompt').addEventListener('click',()=>navigator.clipboard.writeText(document.getElementById('promptOutput').textContent));
